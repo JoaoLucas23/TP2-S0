@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <pthread.h>
+#include <stdint.h>
 
 typedef struct Quadro {
     pid_t pid;
@@ -70,7 +71,7 @@ void frames_init(quadro_t *quadros) {
         quadros[i].pid = -1;
         quadros[i].acessado = 0;
         quadros[i].escrito = 0;
-        quadros[i].none = 0;
+        quadros[i].none = 1;
     }
 }
 
@@ -92,59 +93,70 @@ void pager_init(int nframes, int nblocks) {
 }
 
 void pager_create(pid_t pid) {
-    pthread_mutex_lock(&mutex);
+    //pthread_mutex_lock(&mutex);
+
     int num_pages = (UVM_MAXADDR - UVM_BASEADDR + 1) / sysconf(_SC_PAGESIZE);
+
+    int pos = 0;
+    int flag = 0;
 
     for (int i = 0; i < lista_tabela_paginas->tamanho; i++) {
         if (lista_tabela_paginas[i].pagina == NULL) {
             lista_tabela_paginas[i].pid = pid;
-            lista_tabela_paginas[i].pagina = (pagina_t *) malloc(sizeof(pagina_t));
+            lista_tabela_paginas[i].pagina = (pagina_t*) malloc(sizeof(pagina_t));
             lista_tabela_paginas[i].pagina->tamanho = num_pages;
 
             lista_tabela_paginas[i].pagina->lista_blocos.tamanho = num_pages;
-            lista_tabela_paginas[i].pagina->lista_blocos.blocos = (bloco_t *) malloc(sizeof(bloco_t) * num_pages);
+            lista_tabela_paginas[i].pagina->lista_blocos.blocos = (bloco_t*) malloc(sizeof(bloco_t) * num_pages);
             blocks_init(lista_tabela_paginas[i].pagina->lista_blocos.blocos);
 
             lista_tabela_paginas[i].pagina->lista_quadros.tamanho = num_pages;
-            lista_tabela_paginas[i].pagina->lista_quadros.quadros = (quadro_t *) malloc(sizeof(quadro_t) * num_pages);
+            lista_tabela_paginas[i].pagina->lista_quadros.quadros = (quadro_t*) malloc(sizeof(quadro_t) * num_pages);
             frames_init(lista_tabela_paginas[i].pagina->lista_quadros.quadros);
 
-            lista_tabela_paginas->tamanho += 1;
+            flag=1;
             break;
         }
     }
 
-    if (lista_tabela_paginas->tamanho > 1)
+    if (!flag)
     {
-        lista_tabela_paginas = realloc(lista_tabela_paginas, (lista_tabela_paginas->tamanho + 1) * sizeof(tabela_paginas_t));
+        lista_tabela_paginas = realloc(lista_tabela_paginas, (lista_tabela_paginas->tamanho + 100) * sizeof(tabela_paginas_t));
         lista_tabela_paginas[lista_tabela_paginas->tamanho].pid = pid;
-        lista_tabela_paginas[lista_tabela_paginas->tamanho].pagina = (pagina_t *) malloc(sizeof(pagina_t));
+        lista_tabela_paginas[lista_tabela_paginas->tamanho].pagina = (pagina_t*) malloc(sizeof(pagina_t));
         lista_tabela_paginas[lista_tabela_paginas->tamanho].pagina->tamanho = num_pages;
         
         lista_tabela_paginas[lista_tabela_paginas->tamanho].pagina->lista_blocos.tamanho = num_pages;
-        lista_tabela_paginas[lista_tabela_paginas->tamanho].pagina->lista_blocos.blocos = (bloco_t *) malloc(sizeof(bloco_t) * num_pages);
+        lista_tabela_paginas[lista_tabela_paginas->tamanho].pagina->lista_blocos.blocos = (bloco_t*) malloc(sizeof(bloco_t) * num_pages);
         lista_tabela_paginas[lista_tabela_paginas->tamanho].pagina->lista_blocos.qtd_livres = num_pages;
         blocks_init(lista_tabela_paginas[lista_tabela_paginas->tamanho].pagina->lista_blocos.blocos);
 
         lista_tabela_paginas[lista_tabela_paginas->tamanho].pagina->lista_quadros.tamanho = num_pages;
-        lista_tabela_paginas[lista_tabela_paginas->tamanho].pagina->lista_quadros.quadros = (quadro_t *) malloc(sizeof(quadro_t) * num_pages);
+        lista_tabela_paginas[lista_tabela_paginas->tamanho].pagina->lista_quadros.quadros = (quadro_t*) malloc(sizeof(quadro_t) * num_pages);
         frames_init(lista_tabela_paginas[lista_tabela_paginas->tamanho].pagina->lista_quadros.quadros);
 
-        lista_tabela_paginas->tamanho += 1;
+        pos = lista_tabela_paginas->tamanho + 1;
+        lista_tabela_paginas->tamanho += 100;
+        for (int j=pos; j < lista_tabela_paginas->tamanho; j++)
+        {
+            lista_tabela_paginas->pagina = NULL;
+        }
+        
     }
-        pthread_mutex_unlock(&mutex);
+    //pthread_mutex_unlock(&mutex);
 
 }
 
 void *pager_extend(pid_t pid) {
-    pthread_mutex_lock(&mutex);
-    if (lista_blocos.qtd_livres ==0) return NULL;
+    //pthread_mutex_lock(&mutex);
+
+    if (lista_blocos.qtd_livres == 0) return NULL;
 
     bloco_t bloco;
     int pos = 0;
  
-    for (int i=0; i<lista_blocos.tamanho; i++) {
-        if (lista_blocos.blocos[i].livre == 1) {
+    for (int i=0; i < lista_blocos.tamanho; i++) {
+        if (lista_blocos.blocos[i].livre) {
             lista_blocos.blocos[i].livre = 0;
             lista_blocos.qtd_livres -= 1;
             bloco = lista_blocos.blocos[i];
@@ -154,27 +166,29 @@ void *pager_extend(pid_t pid) {
     for (int i=0; i<lista_tabela_paginas->tamanho; i++) {
         if (lista_tabela_paginas[i].pid == pid)
         {
-            for (int j=0; j<lista_tabela_paginas[i].pagina->lista_blocos.tamanho; j++) {
-                if (lista_tabela_paginas[i].pagina->lista_blocos.blocos[j].livre == 1) {
+            for (int j=0; j < lista_tabela_paginas[i].pagina->lista_blocos.tamanho; j++) {
+                if (lista_tabela_paginas[i].pagina->lista_blocos.blocos[j].livre) {
                     lista_tabela_paginas[i].pagina->lista_blocos.blocos[j] = bloco;
                     lista_tabela_paginas[i].pagina->lista_blocos.qtd_livres -= 1;
                     pos = j;
                     break;
                 }
-                if (j == (lista_tabela_paginas[i].pagina->tamanho - 1)) return NULL;
+                if (pos == (lista_tabela_paginas[i].pagina->tamanho - 1)) return NULL;
             }
             break;
         }
     }
-        pthread_mutex_unlock(&mutex);
-
+    
+    //pthread_mutex_unlock(&mutex);
     return (void*) (UVM_BASEADDR + (intptr_t) (pos * sysconf(_SC_PAGESIZE)));
 }
 
 int pager_syslog(pid_t pid, void *addr, size_t len) {
-    pthread_mutex_lock(&mutex);
+    //pthread_mutex_lock(&mutex);
     int indice = 0;
     int limite = 0;
+    int flag = 0;
+    int pos = 0;
 
     char *message = (char*) malloc (len + 1);
 
@@ -186,32 +200,33 @@ int pager_syslog(pid_t pid, void *addr, size_t len) {
         }
     }
 
-    for (int i=0;i<lista_tabela_paginas[indice].pagina->tamanho;i++) {
+    for (int i=0;i<lista_tabela_paginas[indice].pagina->lista_quadros.tamanho;i++) {
         if(lista_tabela_paginas[indice].pagina->lista_quadros.quadros[i].livre)
         {
             limite = i;
             break;
         }
     }
-    int flag = 0;
+
     for (int i=0; i<len; i++) {
         flag = 1;
         for (int j=0; j<limite; j++) {
             if (lista_tabela_paginas[indice].pagina->lista_quadros.quadros[j].numero == ((intptr_t) addr + i - UVM_BASEADDR) / (sysconf(_SC_PAGESIZE)))
             {
                 flag = 0;
+                pos = j;
                 break;
             }
         }
         if (flag) return -1;
 
-        int pagina = ((intptr_t) addr + i - UVM_BASEADDR) / (sysconf(_SC_PAGESIZE));
+        int pagina = lista_tabela_paginas[indice].pagina->lista_quadros.quadros[pos].numero;
         int indice_quadro = lista_tabela_paginas[indice].pagina->lista_quadros.quadros[pagina].numero;
         message[i] = pmem[(indice_quadro * sysconf(_SC_PAGESIZE)) + i];
         printf("%02x", (unsigned)message[i]);
 		if(i == len-1) printf("\n");
     }
-        pthread_mutex_unlock(&mutex);
+    //pthread_mutex_unlock(&mutex);
 
     return 0;
 }
@@ -249,7 +264,7 @@ void pager_fault(pid_t pid, void *vaddr) {
 		}
 	}
 	// Se esse quadro está carregado.
-	if(lista_tabela_paginas[index].pagina->lista_quadros.quadros[page_num].numero > 0)
+	if(!lista_tabela_paginas[index].pagina->lista_quadros.quadros[page_num].livre)
 	{
 		// Salva o índice do vetor de quadros (memória).
 		curr_frame = lista_tabela_paginas[index].pagina->lista_quadros.quadros[page_num].numero;
@@ -276,11 +291,11 @@ void pager_fault(pid_t pid, void *vaddr) {
 		{
 			new_frame = -1;
 			// Se o bit de referência é zero.
-			if(lista_quadros.quadros[clock_ptr].acessado == 0)
+			if(!lista_quadros.quadros[clock_ptr].acessado)
 			{
 				new_frame = clock_ptr;
 				// Se o frame está em uso.
-				if(lista_quadros.quadros[clock_ptr].livre == 1)
+				if(!lista_quadros.quadros[clock_ptr].livre)
 				{
 					// Remove o frame e Salva o frame no disco se tiver permissão de escrita.
 					move_disk_pid = lista_quadros.quadros[clock_ptr].pid;
@@ -295,26 +310,26 @@ void pager_fault(pid_t pid, void *vaddr) {
 
 					curr_block = lista_tabela_paginas[index2].pagina->lista_blocos.blocos[move_disk_pnum].numero;
 					mmu_nonresident(pid, (void*) (UVM_BASEADDR + (intptr_t) (move_disk_pnum * sysconf(_SC_PAGESIZE))));
-					if(lista_quadros.quadros[clock_ptr].escrito == 1)
+					if(lista_quadros.quadros[clock_ptr].escrito)
 					{
 						mmu_disk_write(clock_ptr, curr_block);
 						// Marca o frame como vazio (sem uso) que está no disco
-						lista_tabela_paginas[index2].pagina->lista_quadros.quadros[move_disk_pnum].numero = -2;
+						lista_tabela_paginas[index2].pagina->lista_quadros.quadros[move_disk_pnum].livre = 2;
 					}
 					else
 					{
 						// Marca o frame como vazio (sem uso).
-						lista_tabela_paginas[index2].pagina->lista_quadros.quadros[move_disk_pnum].numero = -1;
+						lista_tabela_paginas[index2].pagina->lista_quadros.quadros[move_disk_pnum].livre = 1;
 					}
 
 				}
 				// Coloca o novo processo no vetor de quadros.
 				lista_quadros.quadros[clock_ptr].pid = pid;
 				lista_quadros.quadros[clock_ptr].pagina = page_num;
-				lista_quadros.quadros[clock_ptr].livre = 1;
+				lista_quadros.quadros[clock_ptr].livre = 0;
 				lista_quadros.quadros[clock_ptr].acessado = 1;
 				lista_quadros.quadros[clock_ptr].none = 0;
-				if(lista_tabela_paginas[index].pagina->lista_quadros.quadros[page_num].numero == -2)
+				if(lista_tabela_paginas[index].pagina->lista_quadros.quadros[page_num].livre == 2)
 				{
 					new_block = lista_tabela_paginas[index].pagina->lista_blocos.blocos[page_num].numero;
 					mmu_disk_read(new_block, new_frame);
@@ -326,25 +341,23 @@ void pager_fault(pid_t pid, void *vaddr) {
 					lista_quadros.quadros[clock_ptr].escrito = 0;
 				}
 				lista_tabela_paginas[index].pagina->lista_quadros.quadros[page_num].numero = new_frame;
-				mmu_resident(pid, vaddr, new_frame, PROT_READ /*| PROT_WRITE*/);
+				mmu_resident(pid, vaddr, new_frame, PROT_READ);
 			}
-			else
-			{
-				lista_quadros.quadros[clock_ptr].acessado = 0;
-			}
+			else lista_quadros.quadros[clock_ptr].acessado = 0;
+
 			clock_ptr++;
 			clock_ptr %= lista_quadros.tamanho;
 		}
 	}
-        pthread_mutex_unlock(&mutex);
+    //pthread_mutex_unlock(&mutex);
 }
 
 void pager_destroy(pid_t pid) {
-    pthread_mutex_lock(&mutex);
+    //pthread_mutex_lock(&mutex);
     for (int i=0;i<lista_tabela_paginas->tamanho;i++) {
         if (lista_tabela_paginas[i].pid == pid)
         {
-            lista_tabela_paginas[i].pid = -1;
+            lista_tabela_paginas[i].pid = 0;
             free(lista_tabela_paginas[i].pagina->lista_blocos.blocos);
             free(lista_tabela_paginas[i].pagina->lista_quadros.quadros);
             free(lista_tabela_paginas[i].pagina);
@@ -352,5 +365,5 @@ void pager_destroy(pid_t pid) {
             lista_blocos.qtd_livres +=1;
         }   
     }
-    pthread_mutex_unlock(&mutex);
+    //pthread_mutex_unlock(&mutex);
 }
