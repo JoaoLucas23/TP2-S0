@@ -72,7 +72,7 @@ void pager_init(int nframes, int nblocks) {
 		quadros[i].pid = -1;
 		quadros[i].pagina = 0;
         quadros[i].numero = 0;
-		quadros[i].usando = 0; //Setando todos os frames como vazios.
+		quadros[i].usando = 0;
 		quadros[i].referencia = 0;
 		quadros[i].none = 1;
 		quadros[i].escrito = 0;
@@ -173,14 +173,13 @@ void *pager_extend(pid_t pid) {
 				{
 					// Salvo o indice do vetor de blocos, no bloco do processo.
 					tabelas[i].paginas->blocos[j] = bloco;
+					pos = j;
 					break;
 				}
-
-                pos = j;
 				// Se não há blocos livres na tabela do processo.
-				if(j == (tabelas[i].paginas->tamanho) - 1)
+				if(j == (tabelas[i].paginas->tamanho) - 1){
 					return NULL;
-                
+				}
 			}
 			break;
 		}
